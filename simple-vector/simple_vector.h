@@ -41,8 +41,7 @@ public:
         , size_(size)
         , capacity_(size) 
     {
-        std::fill(vector_.Get(), vector_.Get() + size, value);
-        
+        std::fill(vector_.Get(), vector_.Get() + size, value);     
     }
 
     // Создаёт вектор из std::initializer_list
@@ -88,9 +87,7 @@ public:
 
     SimpleVector& operator=(SimpleVector&& rhs) {
         if (*this != rhs) {
-            vector_ = std::move(rhs.vector_);
-            size_ = std::exchange(rhs.size_, 0);
-            capacity_ = std::exchange(rhs.capacity_, 0);
+            rhs.swap(*this);
         }
         return *this;
     }
@@ -98,18 +95,10 @@ public:
     // Добавляет элемент в конец вектора
     // При нехватке места увеличивает вдвое вместимость вектора
     void PushBack(const Type& item) {
-        if (size_ == capacity_) {
-            if (capacity_ == 0) {             
-                Reserve(1);
-            }
-            else {
-                ArrayPtr<Type>tmp(capacity_ * 2);
-                std::copy(begin(), end(), tmp.Get());
-                tmp[size_] = item;
-                vector_.swap(tmp);
-                ++size_;
-                capacity_ = capacity_ * 2;
-            }
+        if (size_ == capacity_) {          
+            Reserve(std::max(1u, capacity_ * 2));
+            vector_[size_] = item;
+            ++size_;
         }
         else {
             vector_[size_] = item;
@@ -118,21 +107,10 @@ public:
     }
 
     void PushBack(Type&& item) {
-        if (size_ == capacity_) {
-            if (capacity_ == 0) {
-                Reserve(1);              
-                vector_[0] = std::move(item);
-                capacity_ = 1;
-                size_ = 1;
-            }
-            else {
-                ArrayPtr<Type>tmp(capacity_ * 2);
-                std::move(begin(), end(), tmp.Get());
-                tmp[size_] = std::move(item);
-                vector_.swap(tmp);
-                ++size_;
-                capacity_ = capacity_ * 2;
-            }
+        if (size_ == capacity_) {           
+            Reserve(std::max(1u, capacity_ * 2));
+            vector_[size_] = std::move(item);
+            ++size_;
         }
         else {
             vector_[size_] = std::move(item);
@@ -149,15 +127,6 @@ public:
         if (pos == end()) {
             index = pos - begin();
         }
-
-        if (capacity_ == 0) {
-            ArrayPtr<Type> tmp(1);
-            vector_.swap(tmp);
-            vector_[0] = value;
-            size_ = 1;
-            capacity_ = 1;
-            return begin();
-        }
         InsertHelper(index);
         vector_[index] = std::move(value);
         return Iterator(vector_.Get() + index);
@@ -170,14 +139,6 @@ public:
         }
         else {
             index = pos - begin();
-        }
-        if (capacity_ == 0) {
-            ArrayPtr<Type> tmp(1);
-            vector_.swap(tmp);
-            vector_[0] = std::move(value);
-            size_ = 1;
-            capacity_ = 1;
-            return begin();
         }
         InsertHelper(index);
         vector_[index] = std::move(value);
@@ -264,18 +225,15 @@ public:
         if (new_size > capacity_) {
             Reserve(new_size);
             std::generate(vector_.Get() + size_, vector_.Get() + new_size, []() { return Type{}; });
-            size_ = new_size;
-            capacity_ = new_size * 2;
+            size_ = new_size;         
         }
         if (new_size < size_) {
             size_ = new_size;
         }
         else {
-            for (auto i = begin() + size_; i != begin() + new_size; ++i) {
-                *i = std::move(Type{});
-            }
+            std::generate(vector_.Get() + size_, vector_.Get() + new_size, []() { return std::move(Type{}); });
             size_ = new_size;
-        }      
+        }
     }
 
     void Reserve(size_t new_capacity) {
@@ -332,12 +290,20 @@ private:
 
     void InsertHelper(size_t index) {
         if (size_ == capacity_) {
-            ArrayPtr<Type>tmp(capacity_ * 2);
-            std::move(begin(), vector_.Get() + index, tmp.Get());
-            std::move(vector_.Get() + index, end(), tmp.Get() + index + 1);
-            vector_.swap(tmp);
-            ++size_;
-            capacity_ = capacity_ * 2;
+            if (capacity_ == 0) {
+                ArrayPtr<Type> tmp(1);
+                vector_.swap(tmp);
+                size_ = 1;
+                capacity_ = 1;
+            } 
+            else {
+                ArrayPtr<Type>tmp(capacity_ * 2);
+                std::move(begin(), vector_.Get() + index, tmp.Get());
+                std::move(vector_.Get() + index, end(), tmp.Get() + index + 1);
+                vector_.swap(tmp);
+                ++size_;
+                capacity_ = capacity_ * 2;
+            }           
         }
         else {
             std::move(vector_.Get() + index, vector_.Get() + size_, vector_.Get() + index + 1);
